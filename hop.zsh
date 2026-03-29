@@ -121,6 +121,130 @@ _hop_list() {
     (( own_awk )) && rm -f "$awk_file"
 }
 
+# ─── Stale cleanup ───────────────────────────────────────────────────────────
+
+_hop_stale() {
+    # Collect stale worktree paths by running the same detection logic used in
+    # the awk script, but in shell so we can filter without fzf.
+    local defbranch
+    defbranch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+    [[ -z "$defbranch" ]] && { git show-ref --verify --quiet refs/heads/main 2>/dev/null && defbranch=main; }
+    [[ -z "$defbranch" ]] && { git show-ref --verify --quiet refs/heads/master 2>/dev/null && defbranch=master; }
+    [[ -z "$defbranch" ]] && defbranch=main
+    local now; now=$(date +%s)
+    local cur_wt; cur_wt=$(git rev-parse --show-toplevel 2>/dev/null)
+
+    local -a stale_paths stale_branches
+    local wt_root wt_branch
+    while IFS= read -r line; do
+        case "$line" in
+            worktree\ *) wt_root="${line#worktree }" ;;
+            branch\ *)
+                wt_branch="${line#branch }"
+                wt_branch="${wt_branch#refs/heads/}" ;;
+        esac
+        if [[ -z "$line" && -n "$wt_root" ]]; then
+            # blank line = end of stanza, evaluate
+            local gone merged age_days
+            gone=$(git -C "$wt_root" branch -vv 2>/dev/null | awk '/^\*/ && /\[gone\]/ {print "yes"}')
+            if [[ "$wt_branch" != "$defbranch" && -n "$defbranch" ]]; then
+                merged=$(git -C "$wt_root" branch -r --merged HEAD 2>/dev/null | grep -c "origin/$defbranch" 2>/dev/null || echo 0)
+            else
+                merged=0
+            fi
+            local lastct; lastct=$(git -C "$wt_root" log -1 --format=%ct 2>/dev/null)
+            age_days=$(( (now - lastct) / 86400 ))
+
+            local is_stale=0
+            [[ -n "$gone" ]] && is_stale=1
+            (( merged > 0 )) && is_stale=1
+            (( age_days > 7 )) && is_stale=1
+
+            if (( is_stale )) && [[ "$wt_root" != "$cur_wt" ]]; then
+                stale_paths+=("$wt_root")
+                stale_branches+=("$wt_branch")
+            fi
+            wt_root=""; wt_branch=""
+        fi
+    done < <(git worktree list --porcelain; echo "")
+
+    if [[ ${#stale_paths[@]} -eq 0 ]]; then
+        echo "hop: no stale worktrees found"
+        return 0
+    fi
+
+    # Non-interactive: no TTY or --list flag → print paths only
+    if [[ ! -t 1 || "$1" == "--list" ]]; then
+        printf '%s\n' "${stale_paths[@]}"
+        return 0
+    fi
+
+    # Interactive: fzf multi-select
+    if ! command -v fzf &>/dev/null; then
+        echo "hop: fzf is required for interactive mode (https://github.com/junegunn/fzf)"
+        printf '%s\n' "${stale_paths[@]}"
+        return 1
+    fi
+
+    local selected
+    selected=$(
+        for i in "${!stale_paths[@]}"; do
+            printf '%s\t%s\n' "${stale_branches[$i]}" "${stale_paths[$i]}"
+        done \
+        | fzf --ansi \
+              --multi \
+              --delimiter=$'\t' \
+              --with-nth=1 \
+              --no-sort \
+              --color='pointer:magenta:bold,hl:magenta:bold,hl+:magenta:bold,fg+:bright-white:bold,bg+:#3a3a5c' \
+              --header='  tab select  ·  enter remove selected  ·  esc cancel' \
+              --header-first \
+              --pointer='▸' \
+              --prompt='  stale › ' \
+        | cut -f2
+    )
+
+    [[ -z "$selected" ]] && return 0
+
+    local -a to_remove
+    while IFS= read -r p; do
+        to_remove+=("$p")
+    done <<< "$selected"
+
+    local n=${#to_remove[@]}
+    echo ""
+    printf "  About to remove %d worktree(s):\n" "$n"
+    for p in "${to_remove[@]}"; do
+        printf "    %s\n" "$p"
+    done
+    echo ""
+    printf "  Remove %d worktree(s)? (y/N) " "$n"
+    read -r ans
+    case "$ans" in
+        y|Y) ;;
+        *) echo "  Aborted."; return 0 ;;
+    esac
+
+    for p in "${to_remove[@]}"; do
+        local dirty; dirty=$(git -C "$p" status --porcelain 2>/dev/null)
+        local branch; branch=$(git -C "$p" rev-parse --abbrev-ref HEAD 2>/dev/null)
+        if [[ -n "$dirty" ]]; then
+            echo ""
+            printf "  \033[1;33m⚠  %s has uncommitted changes:\033[0m\n\n" "$branch"
+            git -C "$p" status --short 2>/dev/null | sed 's/^/    /'
+            echo ""
+            printf "  Remove anyway? (y/N) "
+            read -r dirtrans
+            case "$dirtrans" in
+                y|Y) git worktree remove --force -- "$p" && echo "  Removed $p" ;;
+                *) echo "  Skipped $p" ;;
+            esac
+        else
+            git worktree remove -- "$p" && echo "  Removed $p"
+        fi
+    done
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 hop() {
@@ -135,6 +259,11 @@ hop() {
         cur=$(git rev-parse --show-toplevel 2>/dev/null)
         _hop_list "$cur"
         return 0
+    fi
+
+    if [[ "$1" == "stale" ]]; then
+        _hop_stale "${@:2}"
+        return $?
     fi
 
     if ! command -v fzf &>/dev/null; then
@@ -167,22 +296,25 @@ pw=\$(( (\$(tput cols 2>/dev/null || echo 80) / 2) - 43 ))
 git worktree list --porcelain | awk -f "$awk_file" -v home="$HOME" -v cur="$current_wt" -v pw="\$pw" -v defbranch="\$defbranch" -v now="\$now"
 RELOAD
 
-    # remove script — confirms removal if worktree has uncommitted changes
+    # remove script — always confirms before removing
     cat > "$remove_script" <<'RMSCRIPT'
 #!/bin/sh
 p="$1"
 [ -z "$p" ] && exit 1
 dirty=$(git -C "$p" status --porcelain 2>/dev/null)
+branch=$(git -C "$p" rev-parse --abbrev-ref HEAD 2>/dev/null)
 if [ -n "$dirty" ]; then
     echo ""
     printf "  \033[1;33m⚠  Worktree has uncommitted changes:\033[0m\n\n"
     git -C "$p" status --short 2>/dev/null | sed 's/^/    /'
     echo ""
-    printf "  Remove anyway? (y/N) "
+    printf "  Remove \033[1;96m%s\033[0m anyway? (y/N) " "$branch"
     read ans
     case "$ans" in y|Y) git worktree remove --force -- "$p" 2>/dev/null ;; esac
 else
-    git worktree remove -- "$p" 2>/dev/null
+    printf "  Remove \033[1;96m%s\033[0m? (y/N) " "$branch"
+    read ans
+    case "$ans" in y|Y) git worktree remove -- "$p" 2>/dev/null ;; esac
 fi
 RMSCRIPT
 
