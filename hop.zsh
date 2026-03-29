@@ -13,49 +13,63 @@
 #
 # Dependencies: git, fzf, awk
 
+# ─── Shared awk script ──────────────────────────────────────────────────────
+
+_hop_write_awk() {
+    cat > "$1" <<'HOPAWK'
+BEGIN { RS = ""; FS = "\n" }
+{
+    path = ""; branch = ""; head = ""
+    for (i = 1; i <= NF; i++) {
+        if (substr($i, 1, 9) == "worktree ") path = substr($i, 10)
+        else if (substr($i, 1, 7) == "branch ") {
+            branch = substr($i, 8)
+            sub("refs/heads/", "", branch)
+        }
+        else if (substr($i, 1, 5) == "HEAD ") head = substr($i, 6, 7)
+    }
+    if (path == "") next
+    if (branch == "") branch = "(detached:" head ")"
+
+    q = sprintf("%c", 34)
+    cmd = "git -C " q path q " status --porcelain 2>/dev/null | head -1"
+    cmd | getline out
+    close(cmd)
+    dirty = (out == "") ? "  " : "\033[1;33m●\033[0m "
+
+    marker = (path == cur) ? "\033[1;35m> " : "  "
+    if (pw > 10) {
+        short = path; sub(home, "~", short)
+        if (length(short) > pw) short = "..." substr(short, length(short) - pw + 4)
+        fmt = "%s\033[2m%-" pw "s\033[0m %s\033[1;96m%s\033[0m\t%s\n"
+    } else {
+        short = ""
+        fmt = "%s%s%s\033[1;96m%s\033[0m\t%s\n"
+    }
+    printf fmt, marker, short, dirty, branch, path
+}
+HOPAWK
+}
+
 # ─── Formatting ──────────────────────────────────────────────────────────────
 
 _hop_list() {
-    local cur="$1"
+    local cur="$1" awk_file="$2"
+    local own_awk=0
+    if [[ -z "$awk_file" ]]; then
+        awk_file=$(mktemp "${TMPDIR:-/tmp}/hop-fmt.XXXXXX")
+        own_awk=1
+        _hop_write_awk "$awk_file"
+    fi
+
     local cols=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
-    local pane=$(( cols / 2 ))
-    # path budget = pane - marker(2) - dirty(2) - branch(~35) - padding(4)
-    local pw=$(( pane - 43 ))
+    local pw=$(( (cols / 2) - 43 ))
     (( pw < 0 )) && pw=0
 
     git worktree list --porcelain \
-    | awk -v home="$HOME" -v cur="$cur" -v pw="$pw" '
-    BEGIN { RS = ""; FS = "\n" }
-    {
-        path = ""; branch = ""; head = ""
-        for (i = 1; i <= NF; i++) {
-            if (substr($i, 1, 9) == "worktree ") path = substr($i, 10)
-            else if (substr($i, 1, 7) == "branch ") {
-                branch = substr($i, 8)
-                sub("refs/heads/", "", branch)
-            }
-            else if (substr($i, 1, 5) == "HEAD ") head = substr($i, 6, 7)
-        }
-        if (path == "") next
-        if (branch == "") branch = "(detached:" head ")"
+    | awk -f "$awk_file" -v home="$HOME" -v cur="$cur" -v pw="$pw"
 
-        q = sprintf("%c", 34)
-        cmd = "git -C " q path q " status --porcelain 2>/dev/null"
-        cmd | getline out
-        close(cmd)
-        dirty = (out == "") ? "  " : "\033[1;33m●\033[0m "
-
-        marker = (path == cur) ? "\033[1;35m> " : "  "
-        if (pw > 10) {
-            short = path; sub(home, "~", short)
-            if (length(short) > pw) short = "..." substr(short, length(short) - pw + 4)
-            fmt = "%s\033[2m%-" pw "s\033[0m %s\033[1;96m%s\033[0m\t%s\n"
-        } else {
-            short = ""
-            fmt = "%s%s%s\033[1;96m%s\033[0m\t%s\n"
-        }
-        printf fmt, marker, short, dirty, branch, path
-    }'
+    (( own_awk )) && rm -f "$awk_file"
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -84,44 +98,19 @@ hop() {
 
     # fzf bindings run in subshells and can't call shell functions,
     # so we write small scripts to temp files for reload/remove actions.
-    local reload_script remove_script
+    local awk_file reload_script remove_script
+    awk_file=$(mktemp "${TMPDIR:-/tmp}/hop-fmt.XXXXXX")
     reload_script=$(mktemp "${TMPDIR:-/tmp}/hop-reload.XXXXXX")
     remove_script=$(mktemp "${TMPDIR:-/tmp}/hop-remove.XXXXXX")
-    trap 'rm -f "$reload_script" "$remove_script"' EXIT INT TERM HUP
+    trap 'rm -f "$awk_file" "$reload_script" "$remove_script"' EXIT INT TERM HUP
+
+    _hop_write_awk "$awk_file"
 
     # reload script — re-renders the worktree list for fzf
     cat > "$reload_script" <<RELOAD
 #!/bin/sh
-git worktree list --porcelain | awk -v home="$HOME" -v cur="$current_wt" -v pw=$(( (${COLUMNS:-$(tput cols 2>/dev/null || echo 80)} / 2) - 43 )) '
-BEGIN { RS = ""; FS = "\\n" }
-{
-    path = ""; branch = ""; head = ""
-    for (i = 1; i <= NF; i++) {
-        if (substr(\$i, 1, 9) == "worktree ") path = substr(\$i, 10)
-        else if (substr(\$i, 1, 7) == "branch ") {
-            branch = substr(\$i, 8)
-            sub("refs/heads/", "", branch)
-        }
-        else if (substr(\$i, 1, 5) == "HEAD ") head = substr(\$i, 6, 7)
-    }
-    if (path == "") next
-    if (branch == "") branch = "(detached:" head ")"
-    q = sprintf("%c", 34)
-    cmd = "git -C " q path q " status --porcelain 2>/dev/null"
-    cmd | getline out
-    close(cmd)
-    dirty = (out == "") ? "  " : "\\033[1;33m\xe2\x97\x8f\\033[0m "
-    marker = (path == cur) ? "\\033[1;35m> " : "  "
-    if (pw > 10) {
-        short = path; sub(home, "~", short)
-        if (length(short) > pw) short = "..." substr(short, length(short) - pw + 4)
-        fmt = "%s\\033[2m%-" pw "s\\033[0m %s\\033[1;96m%s\\033[0m\\t%s\\n"
-    } else {
-        short = ""
-        fmt = "%s%s%s\\033[1;96m%s\\033[0m\\t%s\\n"
-    }
-    printf fmt, marker, short, dirty, branch, path
-}'
+pw=\$(( (\$(tput cols 2>/dev/null || echo 80) / 2) - 43 ))
+git worktree list --porcelain | awk -f "$awk_file" -v home="$HOME" -v cur="$current_wt" -v pw="\$pw"
 RELOAD
 
     # remove script — confirms removal if worktree has uncommitted changes
@@ -137,9 +126,9 @@ if [ -n "$dirty" ]; then
     echo ""
     printf "  Remove anyway? (y/N) "
     read ans
-    case "$ans" in y|Y) git worktree remove --force "$p" 2>/dev/null ;; esac
+    case "$ans" in y|Y) git worktree remove --force -- "$p" 2>/dev/null ;; esac
 else
-    git worktree remove "$p" 2>/dev/null
+    git worktree remove -- "$p" 2>/dev/null
 fi
 RMSCRIPT
 
@@ -147,7 +136,7 @@ RMSCRIPT
 
     local selected_path
     selected_path=$(
-        _hop_list "$current_wt" \
+        _hop_list "$current_wt" "$awk_file" \
         | fzf --ansi \
               --delimiter=$'\t' \
               --with-nth=1 \
@@ -173,8 +162,8 @@ RMSCRIPT
         | cut -f2
     )
 
-    rm -f "$reload_script" "$remove_script"
     trap - EXIT INT TERM HUP
+    rm -f "$awk_file" "$reload_script" "$remove_script"
 
     [[ -n "$selected_path" ]] && cd "$selected_path"
 }
