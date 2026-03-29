@@ -439,5 +439,12 @@ RMSCRIPT
     trap - EXIT INT TERM HUP
     rm -f "$awk_file" "$reload_script" "$remove_script"
 
-    [[ -n "$selected_path" ]] && cd "$selected_path"
+    if [[ -n "$selected_path" ]]; then
+        local rel="${PWD#$current_wt}"
+        if [[ -n "$rel" && -d "$selected_path$rel" ]]; then
+            cd "$selected_path$rel"
+        else
+            cd "$selected_path"
+        fi
+    fi
 }
