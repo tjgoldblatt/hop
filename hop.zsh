@@ -45,12 +45,14 @@ BEGIN { RS = ""; FS = "\n" }
     }
     close(cmd2)
 
-    cmd3 = "git -C " q path q " branch -r --merged HEAD 2>/dev/null"
     merged = 0
-    while ((cmd3 | getline line3) > 0) {
-        if (line3 ~ "origin/" defbranch) merged = 1
+    if (branch != defbranch && defbranch != "") {
+        cmd3 = "git -C " q path q " branch -r --merged HEAD 2>/dev/null"
+        while ((cmd3 | getline line3) > 0) {
+            if (line3 ~ ("origin/" defbranch)) merged = 1
+        }
+        close(cmd3)
     }
-    close(cmd3)
 
     cmd4 = "git -C " q path q " log -1 --format=%ct 2>/dev/null"
     lastcommit = 0
