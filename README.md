@@ -20,7 +20,16 @@ Hop between worktrees with a single keystroke. See branch names, dirty state, an
 
 ## Install
 
-### Plugin manager (recommended)
+### Homebrew
+
+```zsh
+brew tap tjgoldblatt/hop
+brew install hop
+```
+
+After install, Homebrew will print the exact line to add to your `~/.zshrc` or `~/.bashrc`.
+
+### Plugin manager
 
 **zinit:**
 ```zsh
