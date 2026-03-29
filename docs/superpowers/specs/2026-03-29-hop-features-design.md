@@ -85,7 +85,7 @@ hop new <branch-name>
 1. Validate: must be inside a git repo, branch name must be provided
 2. Detect default branch: `git symbolic-ref refs/remotes/origin/HEAD` → strip to short name. Fallback: try `main`, then `master`. Error if neither exists.
 3. Fetch: `git fetch origin` (ensures new branch is off fresh upstream)
-4. Compute path: sibling directory `$(git rev-parse --show-toplevel)/../<branch-name>`. Slashes in branch name sanitized to dashes (e.g., `feature/auth` → `feature-auth`)
+4. Compute path: sibling directory `$(git rev-parse --show-toplevel)/../<branch-name>`, preserving slashes as directory separators (e.g., `feat/my-feature` → `../feat/my-feature`, creating the `feat/` subdirectory if needed). Branch name is used as-is — no sanitization.
 5. Create worktree + branch: `git worktree add -b <branch-name> <path> origin/<default-branch>`
 6. Switch: `cd <path>`
 
@@ -146,7 +146,7 @@ Applies to `hop` (interactive switch). Does not apply to `hop new` (always lands
 4. `ctrl-d` on dirty worktree — existing behavior preserved (show diff + confirm)
 5. `hop stale` with TTY — fzf multi-select, summary confirmation, per-worktree dirty check
 6. `hop stale` without TTY — prints paths only
-7. `hop new feat/my-feature` — creates worktree at `../feat-my-feature`, sets upstream, switches in
+7. `hop new feat/my-feature` — creates worktree at `../feat/my-feature` (slash preserved as directory), branch named `feat/my-feature`, switches in
 8. `hop new` errors — missing name, existing branch, existing path, no network
 9. Relative path preservation — switching from `src/components` lands in same path if exists
 10. Relative path preservation — switching when subdir doesn't exist in target lands at root
