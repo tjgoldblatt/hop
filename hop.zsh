@@ -37,6 +37,35 @@ BEGIN { RS = ""; FS = "\n" }
     close(cmd)
     dirty = (out == "") ? "  " : "\033[1;33m●\033[0m "
 
+    # stale detection
+    cmd2 = "git -C " q path q " branch -vv 2>/dev/null"
+    gone = 0
+    while ((cmd2 | getline line2) > 0) {
+        if (line2 ~ /^\*/ && line2 ~ /\[gone\]/) gone = 1
+    }
+    close(cmd2)
+
+    cmd3 = "git -C " q path q " branch -r --merged HEAD 2>/dev/null"
+    merged = 0
+    while ((cmd3 | getline line3) > 0) {
+        if (line3 ~ "origin/" defbranch) merged = 1
+    }
+    close(cmd3)
+
+    cmd4 = "git -C " q path q " log -1 --format=%ct 2>/dev/null"
+    lastcommit = 0
+    cmd4 | getline lastcommit
+    close(cmd4)
+    age_days = (now - lastcommit + 0) / 86400
+
+    if (gone && merged && out == "") {
+        stale = "safe"
+    } else if (gone || merged || age_days > 7) {
+        stale = "soft"
+    } else {
+        stale = "active"
+    }
+
     marker = (path == cur) ? "\033[1;35m> " : "  "
     if (pw > 10) {
         short = path; sub(home, "~", short)
