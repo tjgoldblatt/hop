@@ -155,6 +155,7 @@ _hop_stale() {
                 merged=0
             fi
             local lastct; lastct=$(git -C "$wt_root" log -1 --format=%ct 2>/dev/null)
+            lastct=${lastct:-$now}
             age_days=$(( (now - lastct) / 86400 ))
 
             local is_stale=0
@@ -266,7 +267,7 @@ _hop_new() {
         git show-ref --verify --quiet refs/remotes/origin/master 2>/dev/null && defbranch=master
     fi
     if [[ -z "$defbranch" ]]; then
-        echo "hop: could not detect default branch (set origin/HEAD or use --from)"
+        echo "hop: could not detect default branch (run: git remote set-head origin --auto)"
         return 1
     fi
 
@@ -441,7 +442,7 @@ RMSCRIPT
 
     if [[ -n "$selected_path" ]]; then
         local rel="${PWD#$current_wt}"
-        if [[ -n "$rel" && -d "$selected_path$rel" ]]; then
+        if [[ -n "$rel" && "${rel:0:1}" == "/" && -d "$selected_path$rel" ]]; then
             cd "$selected_path$rel"
         else
             cd "$selected_path"
