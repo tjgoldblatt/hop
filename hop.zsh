@@ -137,7 +137,7 @@ _hop_stale() {
     local cur_wt; cur_wt=$(git rev-parse --show-toplevel 2>/dev/null)
 
     local -a stale_paths stale_branches
-    local wt_root wt_branch
+    local wt_root wt_branch gone merged age_days lastct is_stale
     while IFS= read -r line; do
         case "$line" in
             worktree\ *) wt_root="${line#worktree }" ;;
@@ -147,18 +147,17 @@ _hop_stale() {
         esac
         if [[ -z "$line" && -n "$wt_root" ]]; then
             # blank line = end of stanza, evaluate
-            local gone merged age_days
             gone=$(git -C "$wt_root" branch -vv 2>/dev/null | awk '/^\*/ && /\[gone\]/ {print "yes"}')
             if [[ "$wt_branch" != "$defbranch" && -n "$defbranch" ]]; then
-                merged=$(git -C "$wt_root" branch -r --merged HEAD 2>/dev/null | grep -c "origin/$defbranch" 2>/dev/null || echo 0)
+                merged=$(git -C "$wt_root" branch -r --merged HEAD 2>/dev/null | grep -c "origin/$defbranch" 2>/dev/null || true)
             else
                 merged=0
             fi
-            local lastct; lastct=$(git -C "$wt_root" log -1 --format=%ct 2>/dev/null)
+            lastct=$(git -C "$wt_root" log -1 --format=%ct 2>/dev/null)
             lastct=${lastct:-$now}
             age_days=$(( (now - lastct) / 86400 ))
 
-            local is_stale=0
+            is_stale=0
             [[ -n "$gone" ]] && is_stale=1
             (( merged > 0 )) && is_stale=1
             (( age_days > 7 )) && is_stale=1
@@ -411,6 +410,7 @@ RMSCRIPT
                   merged=$(git -C "$p" branch -r --merged HEAD 2>/dev/null | grep -c "origin/$merged_into" || true)
                   lastct=$(git -C "$p" log -1 --format=%ct 2>/dev/null)
                   now=$(date +%s)
+                  [ -z "$lastct" ] && lastct=$now
                   age=$(( (now - lastct) / 86400 ))
                   show_cleanup=0
                   [ -n "$gone" ] && show_cleanup=1
