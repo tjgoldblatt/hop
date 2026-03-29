@@ -159,6 +159,8 @@ hop() {
     cat > "$reload_script" <<RELOAD
 #!/bin/sh
 defbranch=\$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+if [ -z "\$defbranch" ] && git show-ref --verify --quiet refs/heads/main 2>/dev/null; then defbranch=main; fi
+if [ -z "\$defbranch" ] && git show-ref --verify --quiet refs/heads/master 2>/dev/null; then defbranch=master; fi
 [ -z "\$defbranch" ] && defbranch=main
 now=\$(date +%s)
 pw=\$(( (\$(tput cols 2>/dev/null || echo 80) / 2) - 43 ))
