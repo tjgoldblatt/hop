@@ -190,7 +190,8 @@ _hop_stale() {
 
     local selected
     selected=$(
-        for i in "${!stale_paths[@]}"; do
+        local i
+        for (( i = 1; i <= ${#stale_paths[@]}; i++ )); do
             printf '%s\t%s\n' "${stale_branches[$i]}" "${stale_paths[$i]}"
         done \
         | fzf --ansi \
