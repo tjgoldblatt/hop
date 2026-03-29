@@ -3,7 +3,17 @@
     "allow": [
       "Bash(gh auth:*)",
       "Bash(git config:*)",
-      "Bash(zsh -n hop.zsh)"
+      "Bash(zsh -n hop.zsh)",
+      "Bash(git add:*)",
+      "Bash(zsh -c 'source hop.zsh; echo ok')",
+      "Bash(zsh -c 'source hop.zsh; hop list')",
+      "Bash(zsh -c 'source /Users/tj/Desktop/SoftwareDevelopment/SideProjects/hop/hop.zsh; echo sourced ok')",
+      "Bash(/tmp/test_shell_syntax.sh:*)",
+      "Bash(/bin/sh /tmp/test_shell_syntax.sh)",
+      "Bash(/tmp/test_unset.sh:*)",
+      "Bash(/bin/sh /tmp/test_unset.sh)",
+      "Bash(zsh -c 'source hop.zsh && echo \"✓ zsh sourcing works\"' 2>&1)",
+      "Bash(zsh -c 'source hop.zsh; echo sourced ok')"
     ]
   }
 }

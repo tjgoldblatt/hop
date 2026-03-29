@@ -4,6 +4,8 @@
 # Usage:
 #   hop          - interactive worktree switcher (fzf)
 #   hop list     - non-interactive list of worktrees
+#   hop new      - create a new branch + worktree and switch into it
+#   hop stale    - interactive cleanup of stale worktrees
 #
 # Keybindings (in fzf):
 #   enter        - switch to selected worktree
@@ -245,6 +247,69 @@ _hop_stale() {
     done
 }
 
+# ─── New worktree ─────────────────────────────────────────────────────────────
+
+_hop_new() {
+    local branch="$1"
+    if [[ -z "$branch" ]]; then
+        echo "hop: usage: hop new <branch-name>"
+        return 1
+    fi
+
+    # Detect default branch
+    local defbranch
+    defbranch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+    if [[ -z "$defbranch" ]]; then
+        git show-ref --verify --quiet refs/remotes/origin/main 2>/dev/null && defbranch=main
+    fi
+    if [[ -z "$defbranch" ]]; then
+        git show-ref --verify --quiet refs/remotes/origin/master 2>/dev/null && defbranch=master
+    fi
+    if [[ -z "$defbranch" ]]; then
+        echo "hop: could not detect default branch (set origin/HEAD or use --from)"
+        return 1
+    fi
+
+    # Check branch doesn't already exist
+    if git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
+        echo "hop: branch '$branch' already exists"
+        return 1
+    fi
+
+    # Compute path: sibling dir preserving slash structure
+    local repo_root; repo_root=$(git rev-parse --show-toplevel)
+    # Normalize: resolve .. but keep the branch-as-path structure
+    local wt_path; wt_path=$(cd "$repo_root/.." && echo "$PWD/$branch")
+
+    if [[ -e "$wt_path" ]]; then
+        echo "hop: path '$wt_path' already exists"
+        return 1
+    fi
+
+    # Fetch to ensure we're off fresh upstream
+    echo "  Fetching origin..."
+    if ! git fetch origin 2>&1; then
+        echo "hop: fetch failed"
+        return 1
+    fi
+
+    # Create parent directory if branch name contains slashes
+    local wt_parent="${wt_path%/*}"
+    if [[ "$wt_parent" != "$wt_path" ]]; then
+        mkdir -p "$wt_parent" || { echo "hop: could not create directory '$wt_parent'"; return 1; }
+    fi
+
+    # Create worktree + branch
+    echo "  Creating worktree at $wt_path..."
+    if ! git worktree add -b "$branch" "$wt_path" "origin/$defbranch" 2>&1; then
+        echo "hop: failed to create worktree"
+        return 1
+    fi
+
+    echo "  Switching to $branch"
+    cd "$wt_path"
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 hop() {
@@ -263,6 +328,11 @@ hop() {
 
     if [[ "$1" == "stale" ]]; then
         _hop_stale "${@:2}"
+        return $?
+    fi
+
+    if [[ "$1" == "new" ]]; then
+        _hop_new "${@:2}"
         return $?
     fi
 
