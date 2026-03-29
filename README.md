@@ -20,30 +20,30 @@ Hop between worktrees with a single keystroke. See branch names, dirty state, an
 
 **zinit:**
 ```zsh
-zinit light tj/hop
+zinit light tjgoldblatt/hop
 ```
 
 **sheldon:**
 ```toml
 [plugins.hop]
-github = "tj/hop"
+github = "tjgoldblatt/hop"
 ```
 
 **antidote:**
 ```zsh
-tj/hop
+tjgoldblatt/hop
 ```
 
 **oh-my-zsh:**
 ```zsh
-git clone https://github.com/tj/hop ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/hop
+git clone https://github.com/tjgoldblatt/hop ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/hop
 # then add 'hop' to plugins=(...) in .zshrc
 ```
 
 ### Manual
 
 ```zsh
-git clone https://github.com/tj/hop ~/.hop
+git clone https://github.com/tjgoldblatt/hop ~/.hop
 echo 'source ~/.hop/hop.zsh' >> ~/.zshrc
 ```
 

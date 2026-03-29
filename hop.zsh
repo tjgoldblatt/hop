@@ -1,5 +1,5 @@
 # hop - fuzzy git worktree switcher
-# https://github.com/tj/hop
+# https://github.com/tjgoldblatt/hop
 #
 # Usage:
 #   hop          - interactive worktree switcher (fzf)
