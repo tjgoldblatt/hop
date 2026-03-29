@@ -293,9 +293,9 @@ _hop_new() {
         return 1
     fi
 
-    # Create parent directory if branch name contains slashes
-    local wt_parent="${wt_path%/*}"
-    if [[ "$wt_parent" != "$wt_path" ]]; then
+    # Create parent directory if branch name contains slashes (e.g. feat/my-branch)
+    if [[ "$branch" == */* ]]; then
+        local wt_parent="${wt_path%/*}"
         mkdir -p "$wt_parent" || { echo "hop: could not create directory '$wt_parent'"; return 1; }
     fi
 
