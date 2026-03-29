@@ -13,7 +13,12 @@
       "Bash(/tmp/test_unset.sh:*)",
       "Bash(/bin/sh /tmp/test_unset.sh)",
       "Bash(zsh -c 'source hop.zsh && echo \"✓ zsh sourcing works\"' 2>&1)",
-      "Bash(zsh -c 'source hop.zsh; echo sourced ok')"
+      "Bash(zsh -c 'source hop.zsh; echo sourced ok')",
+      "Bash(brew tap:*)",
+      "Bash(brew untap:*)",
+      "Bash(brew uninstall:*)",
+      "Bash(brew test:*)",
+      "Bash(bash -c \"source /opt/homebrew/Cellar/hop/1.0.0/share/hop.zsh && type hop\")"
     ]
   }
 }
