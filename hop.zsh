@@ -68,16 +68,24 @@ BEGIN { RS = ""; FS = "\n" }
         stale = "active"
     }
 
+    if (stale == "safe") {
+        staleicon = "\033[1;31m✗\033[0m "
+    } else if (stale == "soft") {
+        staleicon = "\033[1;33m~\033[0m "
+    } else {
+        staleicon = "  "
+    }
+
     marker = (path == cur) ? "\033[1;35m> " : "  "
     if (pw > 10) {
         short = path; sub(home, "~", short)
         if (length(short) > pw) short = "..." substr(short, length(short) - pw + 4)
-        fmt = "%s\033[2m%-" pw "s\033[0m %s\033[1;96m%s\033[0m\t%s\n"
+        fmt = "%s\033[2m%-" pw "s\033[0m %s%s\033[1;96m%s\033[0m\t%s\n"
     } else {
         short = ""
-        fmt = "%s%s%s\033[1;96m%s\033[0m\t%s\n"
+        fmt = "%s%s%s%s\033[1;96m%s\033[0m\t%s\n"
     }
-    printf fmt, marker, short, dirty, branch, path
+    printf fmt, marker, short, dirty, staleicon, branch, path
 }
 HOPAWK
 }
@@ -97,8 +105,18 @@ _hop_list() {
     local pw=$(( (cols / 2) - 43 ))
     (( pw < 0 )) && pw=0
 
+    local defbranch
+    defbranch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+    [[ -z "$defbranch" ]] && { git show-ref --verify --quiet refs/heads/main 2>/dev/null && defbranch=main; }
+    [[ -z "$defbranch" ]] && { git show-ref --verify --quiet refs/heads/master 2>/dev/null && defbranch=master; }
+    [[ -z "$defbranch" ]] && defbranch=main  # last-resort fallback, merged check will just never match
+
+    local now
+    now=$(date +%s)
+
     git worktree list --porcelain \
-    | awk -f "$awk_file" -v home="$HOME" -v cur="$cur" -v pw="$pw"
+    | awk -f "$awk_file" -v home="$HOME" -v cur="$cur" -v pw="$pw" \
+          -v defbranch="$defbranch" -v now="$now"
 
     (( own_awk )) && rm -f "$awk_file"
 }
@@ -140,8 +158,11 @@ hop() {
     # reload script — re-renders the worktree list for fzf
     cat > "$reload_script" <<RELOAD
 #!/bin/sh
+defbranch=\$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+[ -z "\$defbranch" ] && defbranch=main
+now=\$(date +%s)
 pw=\$(( (\$(tput cols 2>/dev/null || echo 80) / 2) - 43 ))
-git worktree list --porcelain | awk -f "$awk_file" -v home="$HOME" -v cur="$current_wt" -v pw="\$pw"
+git worktree list --porcelain | awk -f "$awk_file" -v home="$HOME" -v cur="$current_wt" -v pw="\$pw" -v defbranch="\$defbranch" -v now="\$now"
 RELOAD
 
     # remove script — confirms removal if worktree has uncommitted changes
