@@ -202,6 +202,24 @@ RMSCRIPT
               --prompt="  $(basename "$current_wt") › " \
               --preview='
                   p={-1}
+                  gone=$(git -C "$p" branch -vv 2>/dev/null | awk "/^\*/ && /\[gone\]/ {print \"yes\"}")
+                  merged_into=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed "s|refs/remotes/origin/||")
+                  [ -z "$merged_into" ] && merged_into=main
+                  merged=$(git -C "$p" branch -r --merged HEAD 2>/dev/null | grep -c "origin/$merged_into" || true)
+                  lastct=$(git -C "$p" log -1 --format=%ct 2>/dev/null)
+                  now=$(date +%s)
+                  age=$(( (now - lastct) / 86400 ))
+                  show_cleanup=0
+                  [ -n "$gone" ] && show_cleanup=1
+                  [ "$merged" -gt 0 ] 2>/dev/null && show_cleanup=1
+                  [ "$age" -gt 7 ] 2>/dev/null && show_cleanup=1
+                  if [ "$show_cleanup" = "1" ]; then
+                      echo "\033[1;31m  Cleanup signals\033[0m"
+                      [ -n "$gone" ] && echo "  tracking: [gone] (remote branch deleted)"
+                      [ "$merged" -gt 0 ] 2>/dev/null && echo "  merged:   yes (merged into $merged_into)"
+                      echo "  last commit: ${age} days ago"
+                      echo ""
+                  fi
                   echo "\033[1;96m  Status\033[0m"
                   git -c color.status=always -C "$p" status --short --branch 2>/dev/null || echo "  (no status)"
                   echo ""
